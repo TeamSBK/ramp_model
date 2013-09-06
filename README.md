@@ -6,7 +6,7 @@ ramp-model is a web-based model representation app. It provides WYSIWYG platform
 
 Add this line to your application's Gemfile:
 
-    gem 'ramp-model'
+    gem 'ramp-model', '~> 0.0.3'
 
 And then execute:
 
