@@ -1,5 +1,5 @@
 require "ramp_model/version"
-require "rest-client"
+require "rest_client"
 require "json"
 
 module RampModel
