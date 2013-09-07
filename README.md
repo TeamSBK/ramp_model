@@ -40,7 +40,7 @@ RampModel.generate('url')
 5. Create new Pull Requesto
 
 
-### License
+## License
 
 ```
 Copyright (c) 2013 Jaemar Joseph Ramos, TeamSBK
