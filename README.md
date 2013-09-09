@@ -43,7 +43,7 @@ RampModel.generate('url')
 ## License
 
 ```
-Copyright (c) 2013 Jaemar Joseph Ramos, TeamSBK
+Copyright (c) 2013 TeamSBK
 
 MIT License
 

@@ -1,9 +1,10 @@
 require "ramp_model/version"
 require "rest_client"
 require "json"
+require "fileutils"
 
 module RampModel
-  def self.generate url
+  def self.generate(id)
     # @ramp = JSON.parse(RestClient.get("http://#{url}"))
     @ramp = {
       "status" => "200",
@@ -20,6 +21,26 @@ module RampModel
               "field" => "email",
               "type" => "string"
             }
+          ],
+          "associations" => [
+            {
+              "belongs_to" => [
+                {
+                  "name" => "department"
+                },
+                {
+                  "name" => "teacher"
+                }
+              ],
+              "has_many" => [
+                {
+                  "name" => "subjects",
+                },
+                {
+                  "name" => "projects"
+                }
+              ]
+            }
           ]
         }
       ]
@@ -29,12 +50,17 @@ module RampModel
     if(@ramp["status"] == "200")
       @ramp["models"].each do |model|
         script = compose_script model
+        puts "Executing script: "
         puts "#{script}"
-        exec("#{script}")
+        system("#{script}")
+        if model["associations"].first["has_many"]
+          puts "Adding has_many associations:"
+          add_has_many_association model["name"], model["associations"].first["has_many"]
+        end
         puts "Done"
       end
     else
-      #Rails.logger.info("Error Occured!")
+      Rails.logger.info("Error Occured!")
     end
   end
 
@@ -43,6 +69,35 @@ module RampModel
     model["fields"].each do |field|
       script << " #{field["field"]}:#{field["type"]}"
     end
+    model["associations"].first.each do |key, value|
+      unless key == "has_many"
+        value.each do |v|
+          script << " #{v["name"]}:references"
+        end
+        if key == "polymorphic"
+          script << "{polymorphic}"
+        end
+      end
+    end
     return script
+  end
+
+  def self.add_has_many_association name, association
+    filepath = "#{Rails.root}/app/models/#{name}.rb"
+    puts filepath
+    association.each do |assoc|
+      puts "has_many :#{assoc["name"]}"
+      replace(filepath, assoc["name"])
+    end
+  end
+
+  def self.replace(filepath, assoc)
+    file = File.readlines(filepath)
+    model = File.open(filepath, 'w')
+    file.insert(1, "  has_many :#{assoc}\n")
+    file.each do |line|
+      model << line
+    end
+    model.close
   end
 end
