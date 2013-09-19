@@ -1,0 +1,69 @@
+require "ramp_model/version"
+require "rest_client"
+require "json"
+require "fileutils"
+
+module RampModel
+  def self.generate(id)
+    @ramp = JSON.parse(RestClient.get("http://ramp-model.herokuapp.com/get_app/#{id}"))
+    # check if status is 200
+    puts "===== Generating Models ====="
+    #if(@ramp.code == "200")
+      @ramp["models"].each do |model|
+        script = compose_script model
+        puts "Executing script: "
+        puts "#{script}"
+        system("#{script}")
+        model["relationships"].each do |assoc|
+          r_key = assoc.keys.first
+          r_value = assoc.values.first
+          if r_value == "has_many" || r_value == "has_one"
+            puts "Adding #{r_value} association to #{model["name"].downcase}.rb:"
+            add_has_many_association model["name"], r_key, r_value
+          end
+        end
+        puts "Done"
+      end
+    #else
+      #Rails.logger.info("Error Occured!")
+    #end
+  end
+
+  def self.compose_script model
+    script = "rails g model #{model["name"]}"
+    if model["attributes"].present?
+      model["attributes"].each do |attr|
+        script << " #{attr.keys.first.downcase}:#{attr.values.first.downcase}"
+      end
+    end
+    model["relationships"].each do |assoc|
+      r_key = assoc.keys.first
+      r_value = assoc.values.first
+      unless r_value == "has_many" || r_value == "has_one"
+        script << " #{r_key.downcase}:references"
+        if r_value == "polymorphic"
+          script << "{polymorphic}"
+        end
+      end
+    end
+    return script
+  end
+
+  def self.add_has_many_association name, model_name, association
+    filepath = "#{Rails.root}/app/models/#{name.downcase}.rb"
+    model_name = model_name.pluralize unless association.downcase == "has_one"
+    assoc = "#{association.downcase} :#{model_name.downcase}"
+    puts "#{assoc}"
+    replace(filepath, assoc)
+  end
+
+  def self.replace(filepath, assoc)
+    file = File.readlines(filepath)
+    model = File.open(filepath, 'w')
+    file.insert(1, "  #{assoc}\n")
+    file.each do |line|
+      model << line
+    end
+    model.close
+  end
+end

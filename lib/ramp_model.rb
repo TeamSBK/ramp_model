@@ -5,76 +5,51 @@ require "fileutils"
 
 module RampModel
   def self.generate(id)
-    # @ramp = JSON.parse(RestClient.get("http://#{url}"))
-    @ramp = {
-      "status" => "200",
-      "database" => "postgres",
-      "models" => [
-        {
-          "name" => "user",
-          "fields" => [
-            {
-              "field" => "username",
-              "type" => "string"
-            },
-            {
-              "field" => "email",
-              "type" => "string"
-            }
-          ],
-          "associations" => [
-            {
-              "belongs_to" => [
-                {
-                  "name" => "department"
-                },
-                {
-                  "name" => "teacher"
-                }
-              ],
-              "has_many" => [
-                {
-                  "name" => "subjects",
-                },
-                {
-                  "name" => "projects"
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    }
+    @ramp = JSON.parse(RestClient.get("http://ramp-model.herokuapp.com/get_app/#{id}"))
     # check if status is 200
+    puts ""
     puts "===== Generating Models ====="
-    if(@ramp["status"] == "200")
-      @ramp["models"].each do |model|
-        script = compose_script model
-        puts "Executing script: "
-        puts "#{script}"
-        system("#{script}")
-        if model["associations"].first["has_many"]
-          puts "Adding has_many associations:"
-          add_has_many_association model["name"], model["associations"].first["has_many"]
-        end
-        puts "Done"
-      end
-    else
-      Rails.logger.info("Error Occured!")
+    @ramp["models"].each do |model|
+      model_name = model["name"].downcase
+      attributes = model["attributes"] ? model["attributes"] : []
+      relationships = model["relationships"] ? model["relationships"] : []
+
+      script = "rails generate model #{model_name}"
+      script << add_attributes(attributes)
+      script << add_relations(relationships)
+
+      # execute generate command
+      puts ""
+      puts "Executing script:"
+      puts script
+      system(script)
+
+      # inject other relationships like has_many, has_one direct to model.rb
+      inject_other_relationships model_name, relationships if relationships
     end
   end
 
-  def self.compose_script model
-    script = "rails g model #{model["name"]}"
-    model["fields"].each do |field|
-      script << " #{field["field"]}:#{field["type"]}"
+  def self.add_attributes attributes
+    script = ""
+    attributes.each do |attr|
+      field = attr.keys.first.downcase
+      type = attr.values.first.downcase
+      script << " #{field}:#{type}"
     end
-    model["associations"].first.each do |key, value|
-      unless key == "has_many"
-        value.each do |v|
-          script << " #{v["name"]}:references"
-        end
-        if key == "polymorphic"
+
+    return script
+  end
+
+  # add belongs_to, polymorphic relationships to script
+  def self.add_relations relations
+    script = ""
+    relations.each do |relation|
+      model_name = relation.keys.first.downcase
+      assoc = relation.values.first.downcase
+
+      unless assoc == "has_many" || assoc == "has_one"
+        script << " #{model_name}:references"
+        if assoc == "polymorphic"
           script << "{polymorphic}"
         end
       end
@@ -82,19 +57,34 @@ module RampModel
     return script
   end
 
-  def self.add_has_many_association name, association
-    filepath = "#{Rails.root}/app/models/#{name}.rb"
-    puts filepath
-    association.each do |assoc|
-      puts "has_many :#{assoc["name"]}"
-      replace(filepath, assoc["name"])
+  # inject has_many, has_one relationships to model.rb
+  def self.inject_other_relationships model, relations
+    model = model.downcase
+
+    puts "Adding association to #{model}.rb:"
+    relations.each do |relation|
+      r_model = relation.keys.first.downcase
+      assoc = relation.values.first.downcase
+
+      if assoc == "has_many" || assoc == "has_one"
+        add_assoc model, r_model, assoc
+      end
     end
+    return ""
+  end
+
+  def self.add_assoc name, r_model, association
+    filepath = "#{Rails.root}/app/models/#{name}.rb"
+    r_model = r_model.pluralize unless association.downcase == "has_one"
+    assoc = "#{association} :#{r_model}"
+    puts "#{assoc}"
+    replace(filepath, assoc)
   end
 
   def self.replace(filepath, assoc)
     file = File.readlines(filepath)
     model = File.open(filepath, 'w')
-    file.insert(1, "  has_many :#{assoc}\n")
+    file.insert(1, "  #{assoc}\n")
     file.each do |line|
       model << line
     end
